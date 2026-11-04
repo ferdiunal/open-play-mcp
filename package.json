@@ -1,0 +1,36 @@
+{
+  "name": "@ferdiunal/open-play-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open Play MCP sunucusu: geliştirici belgeleri ve SDK API dizini (plan 2026-11-04, DESIGN §10.39)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "bin": {
+    "open-play-mcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/@ferdiunal"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-index.mjs",
+    "build:ts": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3"
+  }
+}

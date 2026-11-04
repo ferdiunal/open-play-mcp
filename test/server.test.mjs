@@ -2,17 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { fakeDocsRoot, fakeTypedoc, FAKE_CS } from "./helpers.mjs";
-import { buildDocsIndex } from "../dist/build/docs.js";
-import { typedocToSymbols } from "../dist/build/typescript.js";
-import { parseCSharp } from "../dist/build/unity.js";
+import { fixtureIndex, text } from "./helpers.mjs";
 import { createServer } from "../dist/server.js";
 
-const index = {
-  schema_version: 1,
-  docs: buildDocsIndex(fakeDocsRoot()),
-  symbols: [...typedocToSymbols(fakeTypedoc()), ...parseCSharp(FAKE_CS, "a.cs")],
-};
+const index = fixtureIndex();
 
 async function connect() {
   const server = createServer(index);
@@ -21,9 +14,8 @@ async function connect() {
   await Promise.all([server.connect(a), client.connect(b)]);
   return { client, server };
 }
-const text = (r) => r.content.map((c) => c.text).join("\n");
 
-test("altı araç, kaynak şablonu ve bir istem listelenir", async () => {
+test("five tools, a resource template and one prompt are listed", async () => {
   const { client } = await connect();
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
   assert.deepEqual(tools, ["get_sdk_symbol", "list_docs", "read_doc", "search_docs", "search_sdk"]);

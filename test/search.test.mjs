@@ -1,16 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fakeDocsRoot, fakeTypedoc, FAKE_CS } from "./helpers.mjs";
-import { buildDocsIndex } from "../dist/build/docs.js";
-import { typedocToSymbols } from "../dist/build/typescript.js";
-import { parseCSharp } from "../dist/build/unity.js";
+import { fixtureIndex } from "./helpers.mjs";
 import { rankDocs, rankSymbols, foldText, tokenize } from "../dist/search.js";
 
-const index = {
-  schema_version: 1,
-  docs: buildDocsIndex(fakeDocsRoot()),
-  symbols: [...typedocToSymbols(fakeTypedoc()), ...parseCSharp(FAKE_CS, "a.cs")],
-};
+const index = fixtureIndex();
 
 test("foldText Türkçe harfleri katlar", () => {
   assert.equal(foldText("Misafır GİRİŞİ Şifre"), "misafir girisi sifre");

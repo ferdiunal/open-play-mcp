@@ -1,7 +1,7 @@
 /**
  * # open-play-mcp::server
  *
- * **Neden var:** belge ve SDK dizinini MCP araçları, kaynakları ve istemi olarak sunar (DESIGN.md §10.39, MERMAID M258, M259).
+ * **Neden var:** belge ve SDK dizinini MCP araçları, kaynakları ve istemi olarak sunar.
  * **Kapsam:** `createServer(index)`; beş araç, belge kaynak şablonu, `integrate_open_play` istemi.
  * **Sahip olduğu tipler:** yok.
  */

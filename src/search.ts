@@ -1,7 +1,7 @@
 /**
  * # open-play-mcp::search
  *
- * **Neden var:** deterministik, gömmesiz arama (DESIGN.md §10.39): başlık > ara başlık > gövde; SDK'da ad > imza > özet.
+ * **Neden var:** deterministik, gömmesiz arama: başlık > ara başlık > gövde; SDK'da ad > imza > özet.
  * **Kapsam:** Türkçe harf katlama, sözcük bölme, belge ve sembol puanlama.
  * **Sahip olduğu tipler:** `DocQuery`, `SymbolQuery`, `DocHit`, `SymbolHit`.
  */

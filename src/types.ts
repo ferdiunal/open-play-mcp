@@ -1,8 +1,8 @@
 /**
  * # open-play-mcp::types
  *
- * **Neden var:** dizin biçimi ve sınırlı değer kümeleri (DESIGN.md §10.39) tek yerde tanımlanır; sunucu, arama ve
- * dizin üreticisi aynı tipleri kullanır. Serbest metinle enum karşılaştırması yapılmaz (AGENTS.md §11).
+ * **Neden var:** dizin biçimi ve sınırlı değer kümeleri tek yerde tanımlanır; sunucu, arama ve
+ * dizin üreticisi aynı tipleri kullanır. Serbest metinle enum karşılaştırması yapılmaz.
  * **Kapsam:** `DocLang`, `SdkKind`, `DocSection`, `SdkSymbolKind` kümeleri; `DocPage`, `SdkMember`, `SdkSymbol`, `McpIndex` biçimleri.
  * **Sahip olduğu tipler:** yukarıdakilerin hepsi.
  */

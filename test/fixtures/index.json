@@ -1,0 +1,222 @@
+{
+ "schema_version": 1,
+ "schemaVersion": 1,
+ "generatedAt": "2026-11-04T00:00:00Z",
+ "commit": "fixture",
+ "docs": [
+  {
+   "id": "auth/guest",
+   "lang": "en",
+   "title": "Guest sign-in",
+   "description": "Signs a player in without an account.",
+   "section": "auth",
+   "url": "https://open-play.b4klabs.dev/docs/en/auth/guest.html",
+   "headings": [
+    "Create the guest",
+    "Errors"
+   ],
+   "body": "# Guest sign-in\n\nA guest player gets a session without e-mail.\n\n## Create the guest\n\nCall `signInGuest()`.\n\n### Errors\n\nSee the error table.\n\n"
+  },
+  {
+   "id": "guides/player-data",
+   "lang": "en",
+   "title": "Player data",
+   "description": "Saves cloud data blobs for a player.",
+   "section": "guides",
+   "url": "https://open-play.b4klabs.dev/docs/en/guides/player-data.html",
+   "headings": [
+    "Save"
+   ],
+   "body": "# Player data\n\nSave player data as an opaque JSON blob with a version.\n\n## Save\n\nUse `saveData`. The guest word appears once here.\n\n"
+  },
+  {
+   "id": "plugins/calling-plugins",
+   "lang": "en",
+   "title": "Calling plugins",
+   "description": "Calls a plugin command.",
+   "section": "plugins",
+   "url": "https://open-play.b4klabs.dev/docs/en/plugins/calling-plugins.html",
+   "headings": [],
+   "body": "# Calling plugins\n\nCall a plugin with `callPlugin`.\n\n"
+  },
+  {
+   "id": "auth/guest",
+   "lang": "tr",
+   "title": "Misafir girişi",
+   "description": "Oyuncuyu hesapsız girdirir.",
+   "section": "auth",
+   "url": "https://open-play.b4klabs.dev/docs/tr/auth/guest.html",
+   "headings": [
+    "Misafiri oluştur"
+   ],
+   "body": "# Misafir girişi\n\nMisafir oyuncu e-posta olmadan oturum alır.\n\n## Misafiri oluştur\n\n`signInGuest()` çağrılır.\n\n"
+  }
+ ],
+ "symbols": [
+  {
+   "sdk": "typescript",
+   "name": "CrxClient",
+   "kind": "class",
+   "module": "@ferdiunal/open-play-ts",
+   "signature": "class CrxClient",
+   "summary": "Typed client.",
+   "members": [
+    {
+     "name": "constructor",
+     "kind": "constructor",
+     "signature": "constructor(options: ClientOptions): CrxClient",
+     "summary": ""
+    },
+    {
+     "name": "signInGuest",
+     "kind": "method",
+     "signature": "signInGuest(name?: string): Promise<Session>",
+     "summary": "Signs in a guest."
+    }
+   ]
+  },
+  {
+   "sdk": "typescript",
+   "name": "ClientOptions",
+   "kind": "interface",
+   "module": "@ferdiunal/open-play-ts",
+   "signature": "interface ClientOptions",
+   "summary": "Options for the client.",
+   "members": [
+    {
+     "name": "baseUrl",
+     "kind": "property",
+     "signature": "baseUrl: string",
+     "summary": "Server address."
+    }
+   ]
+  },
+  {
+   "sdk": "typescript",
+   "name": "ErrorKind",
+   "kind": "enum",
+   "module": "@ferdiunal/open-play-ts",
+   "signature": "enum ErrorKind",
+   "summary": "Error kinds.",
+   "members": [
+    {
+     "name": "Network",
+     "kind": "enum-member",
+     "signature": "Network = \"network\"",
+     "summary": ""
+    }
+   ]
+  },
+  {
+   "sdk": "typescript",
+   "name": "Mode",
+   "kind": "type",
+   "module": "@ferdiunal/open-play-ts",
+   "signature": "type Mode = \"a\" | \"b\"",
+   "summary": "Mode union.",
+   "members": []
+  },
+  {
+   "sdk": "typescript",
+   "name": "makeThing",
+   "kind": "function",
+   "module": "@ferdiunal/open-play-ts",
+   "signature": "makeThing(n: number): string[]",
+   "summary": "Makes a thing.",
+   "members": []
+  },
+  {
+   "sdk": "typescript",
+   "name": "PlayerClient",
+   "kind": "interface",
+   "module": "@ferdiunal/open-play-ts/player",
+   "signature": "interface PlayerClient",
+   "summary": "Player client.",
+   "members": []
+  },
+  {
+   "sdk": "typescript",
+   "name": "PanelThing",
+   "kind": "interface",
+   "module": "@open-play/panel-kit",
+   "signature": "interface PanelThing",
+   "summary": "Panel.",
+   "members": []
+  },
+  {
+   "sdk": "unity",
+   "name": "PlayerSession",
+   "kind": "class",
+   "module": "OpenPlay.Session",
+   "signature": "sealed class PlayerSession",
+   "summary": "Oyuncu oturumu: misafir girişi (ErrorKind.Network).",
+   "members": [
+    {
+     "name": "State",
+     "kind": "property",
+     "signature": "SessionState State",
+     "summary": "Oturum durumu."
+    },
+    {
+     "name": "SignInGuestAsync",
+     "kind": "method",
+     "signature": "Task<SessionProfile> SignInGuestAsync(string name = null, CancellationToken ct = default)",
+     "summary": "Misafir olarak girer."
+    }
+   ]
+  },
+  {
+   "sdk": "unity",
+   "name": "PlayerSession.Nested",
+   "kind": "class",
+   "module": "OpenPlay.Session",
+   "signature": "sealed class Nested",
+   "summary": "",
+   "members": []
+  },
+  {
+   "sdk": "unity",
+   "name": "SessionState",
+   "kind": "enum",
+   "module": "OpenPlay.Session",
+   "signature": "enum SessionState",
+   "summary": "Oturum durumları.",
+   "members": [
+    {
+     "name": "Signed",
+     "kind": "enum-member",
+     "signature": "Signed",
+     "summary": ""
+    },
+    {
+     "name": "Anonymous",
+     "kind": "enum-member",
+     "signature": "Anonymous",
+     "summary": ""
+    },
+    {
+     "name": "Expired",
+     "kind": "enum-member",
+     "signature": "Expired",
+     "summary": ""
+    }
+   ]
+  },
+  {
+   "sdk": "unity",
+   "name": "ISecretStore",
+   "kind": "interface",
+   "module": "OpenPlay.Session",
+   "signature": "interface ISecretStore",
+   "summary": "Okuma arayüzü.",
+   "members": [
+    {
+     "name": "Read",
+     "kind": "method",
+     "signature": "string Read(string key)",
+     "summary": "Okur."
+    }
+   ]
+  }
+ ]
+}

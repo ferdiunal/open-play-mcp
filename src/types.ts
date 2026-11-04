@@ -68,15 +68,24 @@ export interface SdkSymbol {
   members: SdkMember[];
 }
 
-/** Derleme zamanı dizininin tamamı (`dist/index.json`). */
+/**
+ * The whole index as published at `/docs/mcp/index.json`.
+ * Fields: `schemaVersion` (contract version), `generatedAt` (ISO-8601 UTC), `commit` (source short sha or "unknown"),
+ * `docs` (documentation pages), `symbols` (SDK API symbols).
+ */
 export interface McpIndex {
-  schema_version: 1;
+  schemaVersion: 1;
+  generatedAt: string;
+  commit: string;
   docs: DocPage[];
   symbols: SdkSymbol[];
 }
 
-/** Dizin biçimi sürümü; uyuşmazlıkta sunucu açılmaz. */
+/** Index contract version; consumers reject any other value and fall back. */
 export const SCHEMA_VERSION = 1 as const;
+
+/** Default location of the published index. */
+export const DEFAULT_INDEX_URL = "https://open-play.b4klabs.dev/docs/mcp/index.json";
 
 /** Genel belge sitesinin kökü (mdBook düzeni, scripts/build_docs_site.py). */
 export const SITE_ROOT = "https://open-play.b4klabs.dev/docs";

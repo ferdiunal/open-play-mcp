@@ -1,9 +1,17 @@
 {
   "name": "@ferdiunal/open-play-mcp",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Open Play MCP sunucusu: geliştirici belgeleri ve SDK API dizini (plan 2026-11-04, DESIGN §10.39)",
-  "license": "UNLICENSED",
+  "version": "0.2.0",
+  "description": "MCP server for the Open Play developer documentation and SDK API (TypeScript + Unity)",
+  "license": "MIT",
+  "author": "Ferdi ÜNAL",
+  "repository": "github:ferdiunal/open-play-mcp",
+  "homepage": "https://open-play.b4klabs.dev/docs/",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "open-play",
+    "documentation"
+  ],
   "type": "module",
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
@@ -12,18 +20,21 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "snapshot/index.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com/@ferdiunal"
+    "registry": "https://npm.pkg.github.com"
   },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-index.mjs",
-    "build:ts": "tsc -p tsconfig.json",
-    "test": "node --test test/*.test.mjs"
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.mjs",
+    "update-snapshot": "node scripts/update-snapshot.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

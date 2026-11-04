@@ -89,7 +89,7 @@ const INTEGRATION_STEPS: Record<string, string[]> = {
  * - `McpServer` — araçları, kaynak şablonunu ve istemi kayıtlı sunucu; çağıran `connect` eder
  */
 export function createServer(index: McpIndex): McpServer {
-  const server = new McpServer({ name: "open-play-mcp", version: "0.1.0" }, { instructions: `Open Play developer documentation and SDK API. Start with search_docs; read pages with read_doc. Public site: ${SITE_ROOT}/` });
+  const server = new McpServer({ name: "open-play-mcp", version: "0.2.0" }, { instructions: `Open Play developer documentation and SDK API. Start with search_docs; read pages with read_doc. Public site: ${SITE_ROOT}/` });
 
   server.registerTool(
     "search_docs",

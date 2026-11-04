@@ -2,22 +2,26 @@
 /**
  * # open-play-mcp::cli
  *
- * **Neden var:** `npx @ferdiunal/open-play-mcp` (stdio) ve `--http <port>` (Streamable HTTP) giriş noktası (DESIGN.md §10.39).
- * **Kapsam:** argüman ayrıştırma, taşıma seçimi, durumsuz HTTP sunucusu.
+ * **Neden var:** `npx @ferdiunal/open-play-mcp` (stdio) ve `--http <port>` (Streamable HTTP) giriş noktası.
+ * **Kapsam:** argüman ayrıştırma, taşıma seçimi.
  * **Sahip olduğu tipler:** `CliOptions`.
  */
-import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { loadIndex } from "./load-index.js";
+import { createHttpApp } from "./http.js";
+import { IndexStore, loadIndex, readIndexFile, type LoadedIndex } from "./load-index.js";
 import { createServer } from "./server.js";
-import type { McpIndex } from "./types.js";
+import { DEFAULT_INDEX_URL } from "./types.js";
 
-/** Komut satırı seçenekleri: `http` port (yoksa stdio), `host`, `index` yolu. */
+/** CLI options; see USAGE for each flag. */
 export interface CliOptions {
   http?: number;
   host: string;
   index?: string;
+  docsUrl: string;
+  allowedOrigins: string[];
+  trustProxy: boolean;
+  rateLimit: number;
+  burst: number;
   help: boolean;
 }
 
@@ -27,76 +31,59 @@ Usage:
   open-play-mcp                      stdio transport (default)
   open-play-mcp --http <port>        Streamable HTTP on /mcp (stateless; 0 = free port)
 Options:
-  --host <addr>    HTTP bind address (default 127.0.0.1)
-  --index <path>   index.json to load (default: bundled)
-  --help           this text
+  --docs-url <url>          index URL (default ${DEFAULT_INDEX_URL}; env OPEN_PLAY_MCP_INDEX_URL)
+  --index <path>            use this local index.json only, no network
+  --host <addr>             HTTP bind address (default 127.0.0.1)
+  --allowed-origins <list>  comma-separated browser Origins allowed over HTTP (default https://open-play.b4klabs.dev)
+  --trust-proxy             take the client IP from X-Forwarded-For (only behind a trusted reverse proxy)
+  --rate-limit <n>          requests per minute per client IP (default 60)
+  --burst <n>               rate-limit burst size (default 20)
+  --help                    this text
+
+Index source order: live site (ETag) -> disk cache -> bundled snapshot.
 `;
 
-/** Argümanları ayrıştırır; bilinmeyen bayrak `Error` fırlatır. */
-export function parseArgs(argv: string[]): CliOptions {
-  const opts: CliOptions = { host: "127.0.0.1", help: false };
+/** Parses arguments; an unknown flag throws `Error`. */
+export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env): CliOptions {
+  const opts: CliOptions = {
+    host: "127.0.0.1",
+    docsUrl: env["OPEN_PLAY_MCP_INDEX_URL"] ?? DEFAULT_INDEX_URL,
+    allowedOrigins: ["https://open-play.b4klabs.dev"],
+    trustProxy: false,
+    rateLimit: 60,
+    burst: 20,
+    help: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const value = (): string => {
       const v = argv[++i];
-      if (v === undefined) throw new Error(`${a} bir değer ister`);
+      if (v === undefined) throw new Error(`${a} needs a value`);
       return v;
+    };
+    const positive = (): number => {
+      const n = Number(value());
+      if (!Number.isFinite(n) || n <= 0) throw new Error(`${a} needs a positive number`);
+      return n;
     };
     if (a === "--http") {
       const port = Number(value());
-      if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("--http geçerli bir port ister");
+      if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("--http needs a valid port");
       opts.http = port;
     } else if (a === "--host") opts.host = value();
     else if (a === "--index") opts.index = value();
+    else if (a === "--docs-url") opts.docsUrl = value();
+    else if (a === "--allowed-origins") opts.allowedOrigins = value().split(",").map((o) => o.trim()).filter(Boolean);
+    else if (a === "--trust-proxy") opts.trustProxy = true;
+    else if (a === "--rate-limit") opts.rateLimit = positive();
+    else if (a === "--burst") opts.burst = positive();
     else if (a === "--help" || a === "-h") opts.help = true;
-    else throw new Error(`bilinmeyen argüman: ${a}`);
+    else throw new Error(`unknown argument: ${a}`);
   }
   return opts;
 }
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += (chunk as Buffer).length;
-    if (size > 1_000_000) throw new Error("gövde çok büyük");
-    chunks.push(chunk as Buffer);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-}
-
-function sendJson(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
-}
-
-async function serveHttp(index: McpIndex, opts: CliOptions): Promise<void> {
-  const http = createHttpServer((req, res) => {
-    void (async () => {
-      if (req.url?.split("?")[0] !== "/mcp") return sendJson(res, 404, { error: "not found" });
-      if (req.method !== "POST") return sendJson(res, 405, { jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed." }, id: null });
-      try {
-        const body = await readBody(req);
-        const server = createServer(index);
-        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-        res.on("close", () => {
-          void transport.close();
-          void server.close();
-        });
-        await server.connect(transport);
-        await transport.handleRequest(req, res, body);
-      } catch (err) {
-        if (!res.headersSent) sendJson(res, 400, { jsonrpc: "2.0", error: { code: -32700, message: (err as Error).message }, id: null });
-      }
-    })();
-  });
-  await new Promise<void>((resolve) => http.listen(opts.http ?? 0, opts.host, resolve));
-  const address = http.address();
-  const port = typeof address === "object" && address ? address.port : opts.http;
-  process.stderr.write(`open-play-mcp listening on http://${opts.host}:${String(port)}/mcp\n`);
-  const stop = (): void => void http.close(() => process.exit(0));
-  process.on("SIGTERM", stop);
-  process.on("SIGINT", stop);
-}
+const log = (line: string): void => void process.stderr.write(`${line}\n`);
 
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
@@ -104,9 +91,27 @@ async function main(): Promise<void> {
     process.stdout.write(USAGE);
     return;
   }
-  const index = loadIndex(opts.index);
-  if (opts.http !== undefined) return serveHttp(index, opts);
-  await createServer(index).connect(new StdioServerTransport());
+  const loadOpts = { url: opts.docsUrl, log: (l: string) => log(`open-play-mcp: ${l}`) };
+  const loaded: LoadedIndex = opts.index ? { index: readIndexFile(opts.index), source: "file" } : await loadIndex(loadOpts);
+  log(`open-play-mcp: index ${loaded.index.commit} (${loaded.index.generatedAt}) from ${loaded.source}`);
+  if (opts.http === undefined) {
+    await createServer(loaded.index).connect(new StdioServerTransport());
+    return;
+  }
+  const store = new IndexStore(loaded, loadOpts);
+  if (!opts.index) store.start();
+  const http = createHttpApp({ store, allowedOrigins: opts.allowedOrigins, trustProxy: opts.trustProxy, perMinute: opts.rateLimit, burst: opts.burst, requestTimeoutMs: 30_000, log });
+  await new Promise<void>((resolve) => http.listen(opts.http ?? 0, opts.host, resolve));
+  const address = http.address();
+  const port = typeof address === "object" && address ? address.port : opts.http;
+  log(`open-play-mcp listening on http://${opts.host}:${String(port)}/mcp`);
+  const stop = (): void => {
+    store.stop();
+    http.close(() => process.exit(0));
+    http.closeAllConnections();
+  };
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
 }
 
 main().catch((err: unknown) => {

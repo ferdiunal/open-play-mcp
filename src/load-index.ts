@@ -47,19 +47,24 @@ const defaultLog = (line: string): void => void process.stderr.write(`open-play-
  *
  * # Errors
  * - `Error` when `schemaVersion` is not 1 or `docs`/`symbols` are not arrays
+ *
+ * Optional sections (`endpoints`, `errors`) are kept only when they are arrays; an older index without them stays valid.
  */
 export function validateIndex(value: unknown): McpIndex {
   const v = value as Partial<McpIndex> | null;
   if (typeof v !== "object" || v === null) throw new Error("index is not an object");
   if (v.schemaVersion !== SCHEMA_VERSION) throw new Error(`unsupported schemaVersion ${String(v.schemaVersion)} (expected ${SCHEMA_VERSION})`);
   if (!Array.isArray(v.docs) || !Array.isArray(v.symbols)) throw new Error("index needs docs[] and symbols[]");
-  return {
+  const index: McpIndex = {
     schemaVersion: SCHEMA_VERSION,
     generatedAt: typeof v.generatedAt === "string" ? v.generatedAt : "unknown",
     commit: typeof v.commit === "string" ? v.commit : "unknown",
     docs: v.docs,
     symbols: v.symbols,
   };
+  if (Array.isArray(v.endpoints)) index.endpoints = v.endpoints;
+  if (Array.isArray(v.errors)) index.errors = v.errors;
+  return index;
 }
 
 /** Reads and validates an index file (used for `--index`, the cache and the snapshot). Throws on any problem. */
@@ -162,6 +167,11 @@ export class IndexStore {
   ) {
     this.current = initial.index;
     this.source = initial.source;
+  }
+
+  /** The index URL this store refreshes from. */
+  get url(): string {
+    return this.opts.url ?? DEFAULT_INDEX_URL;
   }
 
   /** Re-fetches once (ETag); keeps the old index when only a fallback source answers. */

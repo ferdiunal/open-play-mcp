@@ -154,7 +154,7 @@ export function createHttpApp(opts: HttpOptions): Server {
       return sendJson(res, 400, rpcError(-32700, "Invalid JSON."), cors);
     }
     for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
-    const server = createServer(opts.store.current);
+    const server = createServer(opts.store.current, { source: opts.store.source, url: opts.store.url });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on("close", () => {
       void transport.close();

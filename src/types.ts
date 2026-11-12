@@ -3,7 +3,8 @@
  *
  * **Neden var:** dizin biçimi ve sınırlı değer kümeleri tek yerde tanımlanır; sunucu, arama ve
  * dizin üreticisi aynı tipleri kullanır. Serbest metinle enum karşılaştırması yapılmaz.
- * **Kapsam:** `DocLang`, `SdkKind`, `DocSection`, `SdkSymbolKind` kümeleri; `DocPage`, `SdkMember`, `SdkSymbol`, `McpIndex` biçimleri.
+ * **Kapsam:** `DocLang`, `SdkKind`, `DocSection`, `SdkSymbolKind` kümeleri; `DocPage`, `PanelMeta`, `SdkMember`, `SdkSymbol`,
+ * `ApiEndpoint`, `EndpointHeader`, `ApiError`, `McpIndex` biçimleri.
  * **Sahip olduğu tipler:** yukarıdakilerin hepsi.
  */
 
@@ -37,7 +38,25 @@ export const SDK_SYMBOL_KINDS = ["class", "interface", "struct", "enum", "type",
 /** Bir SDK sembol türü. */
 export type SdkSymbolKind = (typeof SDK_SYMBOL_KINDS)[number];
 
-/** Dizindeki bir belge sayfası. Alanlar: kimlik, dil, başlık, açıklama, bölüm, genel URL, ara başlıklar, markdown gövdesi. */
+/**
+ * Panel page navigation (only on `panel/*` pages of a newer index).
+ * Fields: `route` (hash route, e.g. `#/settings/api-keys`), `kind` (`page`, `tab`, `sub-screen`, `plugin`), `area` (sidebar area
+ * key; `server` = "Server (all games)", platform operator screens), `menu` (sidebar path in English and Turkish labels; a
+ * sub-screen carries its parent's path), `capability` (panel capability needed to see the page), `roles` (only these panel roles
+ * see it), `realms` (only in these realms), `inMenu: false` (not in the sidebar).
+ */
+export interface PanelMeta {
+  route: string;
+  kind?: string;
+  area?: string;
+  menu?: { en: string[]; tr: string[] };
+  capability?: string;
+  roles?: string[];
+  realms?: string[];
+  inMenu?: false;
+}
+
+/** Dizindeki bir belge sayfası. Alanlar: kimlik, dil, başlık, açıklama, bölüm, genel URL, ara başlıklar, markdown gövdesi, panel sayfasında `panel`. */
 export interface DocPage {
   id: string;
   lang: DocLang;
@@ -47,6 +66,40 @@ export interface DocPage {
   url: string;
   headings: string[];
   body: string;
+  panel?: PanelMeta;
+}
+
+/** A request header an endpoint expects; `note` explains a conditional requirement. */
+export interface EndpointHeader {
+  name: string;
+  required: boolean;
+  note?: string;
+}
+
+/**
+ * One REST endpoint from the index `endpoints` section (built from the generated endpoint reference, optionally enriched with
+ * the curated OpenAPI). `auth` is the credential label ("Server key", "Player session", ...); `summary` is in Turkish at the source.
+ */
+export interface ApiEndpoint {
+  method: string;
+  path: string;
+  module: string;
+  group: string;
+  auth: string;
+  headers: EndpointHeader[];
+  summary: string;
+  operationId?: string;
+  security?: string[];
+}
+
+/** One error code from the index `errors` section (tables of `reference/errors`). `code` is a machine code or an HTTP status. */
+export interface ApiError {
+  lang: DocLang;
+  code: string;
+  status?: number;
+  family: string;
+  meaning: string;
+  page: string;
 }
 
 /** Bir sembolün üyesi (yöntem, alan, enum üyesi). */
@@ -71,7 +124,8 @@ export interface SdkSymbol {
 /**
  * The whole index as published at `/docs/mcp/index.json`.
  * Fields: `schemaVersion` (contract version), `generatedAt` (ISO-8601 UTC), `commit` (source short sha or "unknown"),
- * `docs` (documentation pages), `symbols` (SDK API symbols).
+ * `docs` (documentation pages), `symbols` (SDK API symbols), `endpoints` and `errors` (absent in indexes built before
+ * open-play-mcp 0.3.0; tools then say so instead of failing).
  */
 export interface McpIndex {
   schemaVersion: 1;
@@ -79,6 +133,8 @@ export interface McpIndex {
   commit: string;
   docs: DocPage[];
   symbols: SdkSymbol[];
+  endpoints?: ApiEndpoint[];
+  errors?: ApiError[];
 }
 
 /** Index contract version; consumers reject any other value and fall back. */

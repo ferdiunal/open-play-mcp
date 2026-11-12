@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const loaded: LoadedIndex = opts.index ? { index: readIndexFile(opts.index), source: "file" } : await loadIndex(loadOpts);
   log(`open-play-mcp: index ${loaded.index.commit} (${loaded.index.generatedAt}) from ${loaded.source}`);
   if (opts.http === undefined) {
-    await createServer(loaded.index).connect(new StdioServerTransport());
+    await createServer(loaded.index, { source: loaded.source, url: opts.docsUrl }).connect(new StdioServerTransport());
     return;
   }
   const store = new IndexStore(loaded, loadOpts);

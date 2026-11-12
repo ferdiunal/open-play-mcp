@@ -17,6 +17,18 @@ test("validateIndex: rejects another schemaVersion and malformed bodies", () => 
   assert.equal(validateIndex(fixtureIndex()).commit, "fixture");
 });
 
+test("validateIndex: keeps endpoints/errors arrays, drops malformed ones, accepts an older index without them", () => {
+  const old = validateIndex(fixtureIndex());
+  assert.equal("endpoints" in old, false);
+  assert.equal("errors" in old, false);
+  const rich = validateIndex({ ...fixtureIndex(), endpoints: [{ method: "GET", path: "/v1/x" }], errors: [] });
+  assert.equal(rich.endpoints.length, 1);
+  assert.deepEqual(rich.errors, []);
+  const bad = validateIndex({ ...fixtureIndex(), endpoints: {}, errors: "x" });
+  assert.equal(bad.endpoints, undefined);
+  assert.equal(bad.errors, undefined);
+});
+
 test("200: fresh index is used and cached with its ETag", async () => {
   const cacheDir = tmp();
   const r = await loadIndex({ cacheDir, log: quiet, fetchImpl: reply(fixtureIndex(), { status: 200, headers: { etag: '"v1"' } }) });

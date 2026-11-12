@@ -4,7 +4,8 @@ An [MCP](https://modelcontextprotocol.io) server that gives AI assistants the of
 documentation and SDK API (TypeScript and Unity C#). Ask "how do I sign a guest in?" and the answer comes from the
 real docs at <https://open-play.b4klabs.dev/docs/>, not from guesswork.
 
-It is read-only: every tool only reads a documentation index.
+It is read-only: every tool only reads a documentation index. No tool fetches a URL you give it; `get_endpoint` matches a path
+as text.
 
 ## Use the hosted server (easiest)
 
@@ -46,13 +47,20 @@ or in a JSON config: `{ "command": "npx", "args": ["-y", "@ferdiunal/open-play-m
 
 | Kind | Name | What it does |
 |---|---|---|
-| tool | `search_docs` | Searches the developer docs (English or Turkish) and returns the best pages with their URLs. |
-| tool | `read_doc` | Returns one page as markdown by id, such as `auth/guest`. |
+| tool | `search_docs` | Searches the developer docs (English or Turkish) and returns the best pages with their URLs; panel pages also show their menu path, route and required panel capability. |
+| tool | `read_doc` | Returns one page as markdown by id, such as `auth/guest` (with the panel line for panel pages). |
 | tool | `list_docs` | Lists page ids and titles, optionally for one section. |
 | tool | `search_sdk` | Searches TypeScript and Unity SDK symbols by name, member, signature or summary. |
 | tool | `get_sdk_symbol` | Returns one SDK type or function with signature, summary and members (`Type.Member` works). |
+| tool | `get_endpoint` | `{path, method?}` → credentials (server key, client key, player session), required headers (`Idempotency-Key`, `If-Match`, `x-crx-env`, `x-csrf-token`) and summary of a REST endpoint; templates (`/v1/leaderboards/{key}/scores`), concrete paths and full URLs all work. |
+| tool | `get_error` | `{code, lang?}` → meaning, HTTP status and retry advice of an error code (`module_disabled`, `409`, ...). |
+| tool | `index_info` | Source commit, build time and age, where the index was loaded from, and page/symbol/endpoint/error counts. |
 | resource | `open-play-docs://<lang>/<page>` | One doc page as markdown. |
-| prompt | `integrate_open_play` | A step-by-step plan to integrate a game (`web`, `unity` or `server`). |
+| prompt | `integrate_open_play` | A plan for one `scenario`: `web-direct` (web game on its own domain, SDK token mode), `web-bff` (static game + backend holding the server key), `second-game` (add a game to an existing studio), `unity`, `server`; with the panel checklist and the pages to read. The older `platform` argument (`web`, `unity`, `server`) still works. |
+
+Search folds Turkish letters, ignores English and Turkish stopwords, matches short words only as whole words, and knows a
+small set of English↔Turkish synonyms (for example `environment id` ↔ `ortam kimliği` ↔ `x-crx-env`, `leaderboard` ↔
+`skor tablosu`, `new game` ↔ `yeni oyun`).
 
 ## Flags and environment
 
@@ -79,7 +87,7 @@ Requests without an `Origin` header (CLI clients) are allowed. Logs are one JSON
 
 ```bash
 docker run -d --name open-play-mcp --restart unless-stopped \
-  -p 127.0.0.1:18490:8080 ghcr.io/ferdiunal/open-play-mcp:0.2.0
+  -p 127.0.0.1:18490:8080 ghcr.io/ferdiunal/open-play-mcp:0.3.0
 ```
 
 Put a reverse proxy in front for TLS. Behind a proxy that sets `X-Forwarded-For` (the image already starts with
@@ -90,7 +98,10 @@ Nginx needs `proxy_buffering off;` and a long `proxy_read_timeout` for streamed 
 ## How the index is refreshed
 
 The docs site publishes one file, `https://open-play.b4klabs.dev/docs/mcp/index.json`, rebuilt with every docs release
-(`schemaVersion`, `generatedAt`, `commit`, `docs[]`, `symbols[]`). On start the server loads, in this order:
+(`schemaVersion`, `generatedAt`, `commit`, `docs[]`, `symbols[]`, and since the 0.3.0-era docs pipeline `endpoints[]`,
+`errors[]` and a `panel` object on panel pages). An older index without those parts still loads; `get_endpoint` and
+`get_error` then say so and point to the reference pages. `index_info` shows which index is being served. On start the
+server loads, in this order:
 
 1. the live index (5 s timeout, validated; `schemaVersion` must be 1),
 2. the on-disk cache (used with `If-None-Match`, so unchanged indexes cost a `304`),
@@ -99,6 +110,12 @@ The docs site publishes one file, `https://open-play.b4klabs.dev/docs/mcp/index.
 Network problems never crash the server and are logged to stderr only (stdout carries the stdio protocol). In `--http`
 mode the index is re-checked in the background every 15 minutes; a failed check keeps serving the previous index.
 Maintainers refresh the bundled snapshot with `npm run update-snapshot` (optionally `-- --from <file|url>`).
+
+## Release
+
+Pushing a `v*` tag runs `.github/workflows/publish.yml`: it builds and tests, publishes the npm package to GitHub Packages,
+then builds the Docker image and pushes `ghcr.io/ferdiunal/open-play-mcp:<version>` and `:latest`. Before tagging, refresh
+the bundled snapshot from the published index so offline installs carry the same data.
 
 ## Develop
 

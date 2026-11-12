@@ -2,16 +2,30 @@
  * # open-play-mcp::server
  *
  * **Neden var:** belge ve SDK dizinini MCP araçları, kaynakları ve istemi olarak sunar.
- * **Kapsam:** `createServer(index)`; beş araç, belge kaynak şablonu, `integrate_open_play` istemi.
- * **Sahip olduğu tipler:** yok.
+ * **Kapsam:** `createServer(index, meta)`; sekiz araç (belge, SDK, uç, hata, dizin bilgisi), belge kaynak şablonu, `integrate_open_play` istemi.
+ * **Sahip olduğu tipler:** `IndexMeta`.
+ *
+ * Every tool only reads the in-memory index. No tool takes a URL to fetch: `get_endpoint` matches the given path as text.
  */
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
+import { integrationPrompt, PLATFORM_SCENARIO, SCENARIOS, scenarioFor } from "./integration.js";
+import type { IndexSource } from "./load-index.js";
+import { findEndpoints, findErrors, formatEndpoint, formatError } from "./reference.js";
 import { DEFAULT_LIMIT, MAX_LIMIT, rankDocs, rankSymbols, foldText } from "./search.js";
-import { DOC_LANGS, DOC_SECTIONS, SDK_KINDS, SITE_ROOT, type DocLang, type DocPage, type McpIndex, type SdkSymbol } from "./types.js";
+import { DEFAULT_INDEX_URL, DOC_LANGS, DOC_SECTIONS, SDK_KINDS, SITE_ROOT, type DocLang, type DocPage, type McpIndex, type SdkSymbol } from "./types.js";
+
+/** Server version reported to MCP clients. */
+export const SERVER_VERSION = "0.3.0";
 
 /** `read_doc` çıktısının üst sınırı (karakter). */
 export const READ_DOC_MAX_CHARS = 40000;
+
+/** Where the served index came from: `source` (network, cache, snapshot, file) and the index URL for network/cache. */
+export interface IndexMeta {
+  source?: IndexSource;
+  url?: string;
+}
 const MEMBER_LIST_MAX = 80;
 const RESOURCE_SCHEME = "open-play-docs";
 
@@ -73,11 +87,38 @@ function findSymbol(index: McpIndex, sdk: string, name: string): { symbol: SdkSy
   return undefined;
 }
 
-const INTEGRATION_STEPS: Record<string, string[]> = {
-  web: ["Read getting-started/quickstart and sdk/typescript.", "Sign the player in as a guest (auth/guest), then read auth/sessions-and-csrf.", "Use createPlayerClient from the TypeScript SDK; look up exact signatures with get_sdk_symbol."],
-  unity: ["Read getting-started/quickstart and sdk/unity.", "Sign the player in as a guest (auth/guest) with PlayerSession.SignInGuestAsync.", "Look up exact C# signatures with get_sdk_symbol (sdk: unity)."],
-  server: ["Read getting-started/quickstart and sdk/typescript.", "Use a server key with CrxClient only on your own server (auth/server-verification).", "Read reference/errors and reference/idempotency-and-concurrency before writing data."],
-};
+/**
+ * One line telling where a panel page is and who sees it, e.g.
+ * `Panel: Settings › Game settings › API keys (TR UI: Ayarlar › Oyun ayarları › API anahtarları) · route #/settings/api-keys · needs panel capability api_keys_read`.
+ */
+export function panelLine(page: DocPage): string | undefined {
+  const p = page.panel;
+  if (!p || typeof p.route !== "string") return undefined;
+  const parts: string[] = [];
+  if (p.menu && Array.isArray(p.menu.en) && Array.isArray(p.menu.tr)) {
+    const [own, other, otherLang] = page.lang === "tr" ? [p.menu.tr, p.menu.en, "EN"] : [p.menu.en, p.menu.tr, "TR"];
+    const where = `${own.join(" › ")} (${otherLang} UI: ${other.join(" › ")})`;
+    parts.push(p.kind === "sub-screen" || p.kind === "plugin" ? `opened from ${where}` : where);
+  }
+  parts.push(`route ${p.route}`);
+  if (p.capability) parts.push(`needs panel capability ${p.capability}`);
+  if (p.roles?.length) parts.push(`only for roles ${p.roles.join(", ")}`);
+  if (p.realms?.length) parts.push(`only in the ${p.realms.join("/")} realm`);
+  if (p.inMenu === false) parts.push("not in the sidebar");
+  return `Panel: ${parts.join(" · ")}`;
+}
+
+const SOURCE_LABEL: Record<IndexSource, string> = { network: "live site", cache: "disk cache", snapshot: "snapshot bundled with this server", file: "local file (--index)" };
+
+function ageText(generatedAt: string): string {
+  const t = Date.parse(generatedAt);
+  if (!Number.isFinite(t)) return "unknown age";
+  const days = (Date.now() - t) / 86_400_000;
+  return days < 1 ? `${Math.max(0, Math.round(days * 24))} h old` : `${days.toFixed(1)} days old`;
+}
+
+const OLD_INDEX = (index: McpIndex, what: string, page: string): string =>
+  `This docs index (commit ${index.commit}, generated ${index.generatedAt}) has no ${what} table; it was built before that data was added to the index. Read the "${page}" page with read_doc instead, or call index_info.`;
 
 /**
  * Dizinden bir MCP sunucusu kurar (taşıma bağlamaz).
@@ -88,8 +129,17 @@ const INTEGRATION_STEPS: Record<string, string[]> = {
  * # Dönüş
  * - `McpServer` — araçları, kaynak şablonunu ve istemi kayıtlı sunucu; çağıran `connect` eder
  */
-export function createServer(index: McpIndex): McpServer {
-  const server = new McpServer({ name: "open-play-mcp", version: "0.2.0" }, { instructions: `Open Play developer documentation and SDK API. Start with search_docs; read pages with read_doc. Public site: ${SITE_ROOT}/` });
+export function createServer(index: McpIndex, meta: IndexMeta = {}): McpServer {
+  const server = new McpServer(
+    { name: "open-play-mcp", version: SERVER_VERSION },
+    {
+      instructions:
+        "Open Play developer documentation, SDK API, REST endpoint table and error codes. Start with search_docs and read pages with read_doc " +
+        "(panel pages also show the menu path, route and required panel capability). Use get_endpoint for the credentials and headers of a REST call " +
+        "and get_error for an error code. Call index_info to see how fresh the index is (source commit and build time). " +
+        `The integrate_open_play prompt has scenarios: ${SCENARIOS.join(", ")}. Public site: ${SITE_ROOT}/`,
+    },
+  );
 
   server.registerTool(
     "search_docs",
@@ -101,7 +151,10 @@ export function createServer(index: McpIndex): McpServer {
     async ({ query, lang, limit }) => {
       const hits = rankDocs(index, { query, lang, limit });
       if (hits.length === 0) return ok(`No pages matched "${query}" in ${lang}. Try other words or call list_docs.`);
-      const lines = hits.map((h, i) => `${i + 1}. ${h.page.title} (${h.page.id})\n   ${h.page.description}\n   ${h.page.url}`);
+      const lines = hits.map((h, i) => {
+        const panel = panelLine(h.page);
+        return `${i + 1}. ${h.page.title} (${h.page.id})\n   ${h.page.description}${panel ? `\n   ${panel}` : ""}\n   ${h.page.url}`;
+      });
       return ok(lines.join("\n"));
     },
   );
@@ -119,7 +172,8 @@ export function createServer(index: McpIndex): McpServer {
         const hints = suggestIds(index, lang, page);
         return fail(`No page "${page}" in ${lang}.${hints.length > 0 ? ` Did you mean: ${hints.join(", ")}?` : ""} Call list_docs for all ids.`);
       }
-      const header = `# ${found.title}\nURL: ${found.url}\n\n`;
+      const panel = panelLine(found);
+      const header = `# ${found.title}\nURL: ${found.url}\n${panel ? `${panel}\n` : ""}\n`;
       if (found.body.length <= READ_DOC_MAX_CHARS) return ok(header + found.body);
       return ok(`${header}${found.body.slice(0, READ_DOC_MAX_CHARS)}\n\n[truncated; full page: ${found.url}]`);
     },
@@ -183,6 +237,78 @@ export function createServer(index: McpIndex): McpServer {
     },
   );
 
+  server.registerTool(
+    "index_info",
+    {
+      title: "About the Open Play docs index",
+      description: "Tells how fresh the documentation index behind these tools is: source commit, build time and age, where it was loaded from, and how many pages, SDK symbols, endpoints and error codes it holds. Call it when an answer looks outdated.",
+      inputSchema: {},
+    },
+    async () => {
+      const count = (lang: DocLang): number => index.docs.filter((d) => d.lang === lang).length;
+      const ts = index.symbols.filter((s) => s.sdk === "typescript").length;
+      const panel = index.docs.filter((d) => d.panel?.menu).length;
+      const lines = [
+        `Commit: ${index.commit}`,
+        `Generated: ${index.generatedAt} (${ageText(index.generatedAt)})`,
+        `Loaded from: ${meta.source ? SOURCE_LABEL[meta.source] : "unknown"}${meta.url && meta.source !== "file" ? ` — ${meta.url}` : ""}`,
+        `Published index: ${DEFAULT_INDEX_URL} (rebuilt with every docs release)`,
+        `Pages: ${index.docs.length} (en ${count("en")}, tr ${count("tr")}); panel pages with menu paths: ${panel}`,
+        `SDK symbols: ${ts} TypeScript, ${index.symbols.length - ts} Unity`,
+        index.endpoints ? `Endpoints: ${index.endpoints.length} (${index.endpoints.filter((e) => e.operationId).length} with an OpenAPI operationId)` : "Endpoints: not in this index (built before endpoint data was added)",
+        index.errors ? `Error codes: ${index.errors.filter((e) => e.lang === "en").length} (en), ${index.errors.filter((e) => e.lang === "tr").length} (tr)` : "Error codes: not in this index (built before error data was added)",
+        `Server: open-play-mcp ${SERVER_VERSION}`,
+      ];
+      return ok(lines.join("\n"));
+    },
+  );
+
+  server.registerTool(
+    "get_endpoint",
+    {
+      title: "Look up an Open Play REST endpoint",
+      description:
+        "Returns the credentials (server key, client key, player session...), required headers (Idempotency-Key, If-Match, x-crx-env, x-csrf-token) and summary of a REST endpoint. " +
+        "The path may be a template ('/v1/leaderboards/{key}/scores'), a concrete path ('/v1/leaderboards/weekly/scores') or a full URL; it is matched as text, never fetched.",
+      inputSchema: {
+        path: z.string().min(1).max(500).describe("Endpoint path, e.g. '/v1/leaderboards/{key}/scores' or 'POST /v1/transfers'."),
+        method: z.string().regex(/^[A-Za-z]{3,7}$/).optional().describe("HTTP method (GET, POST, PUT, PATCH, DELETE); default all methods of the path."),
+      },
+    },
+    async ({ path, method }) => {
+      if (!index.endpoints) return ok(OLD_INDEX(index, "endpoint", "reference/endpoints"));
+      const found = findEndpoints(index.endpoints, path, method);
+      const reference = `Reference: ${SITE_ROOT}/en/reference/endpoints.html`;
+      if (found.matches.length > 0) return ok([...found.matches.map(formatEndpoint), reference].join("\n\n"));
+      if (found.otherMethods.length > 0) return fail(`No ${(method ?? path.split(/\s+/)[0] ?? "").toUpperCase()} endpoint at "${path}"; that path has: ${found.otherMethods.join(", ")}.`);
+      const hints = found.suggestions.map((e) => `${e.method} ${e.path}`);
+      return fail(`No endpoint matches "${path}".${hints.length > 0 ? ` Closest: ${hints.join("; ")}.` : ""} Plugin endpoints (/v1/plugins/...) are described by each plugin's schema; see read_doc plugins/calling-plugins.`);
+    },
+  );
+
+  server.registerTool(
+    "get_error",
+    {
+      title: "Explain an Open Play error code",
+      description: "Explains an error code from the error reference: a machine code such as 'module_disabled', 'idempotency_in_flight', 'out_of_stock', or an HTTP status such as '409' (also lists machine codes sent with that status). Says when to retry.",
+      inputSchema: { code: z.string().min(1).max(100).describe("Error code or HTTP status, e.g. 'module_disabled' or '429'."), lang: langSchema },
+    },
+    async ({ code, lang }) => {
+      if (!index.errors) return ok(OLD_INDEX(index, "error code", "reference/errors"));
+      const found = findErrors(index.errors, code, lang);
+      const source = `Source: ${SITE_ROOT}/${lang}/reference/errors.html`;
+      if (found.matches.length > 0 || found.sameStatus.length > 0) {
+        const parts = found.matches.map(formatError);
+        if (found.sameStatus.length > 0) parts.push(`Machine codes sent with HTTP ${found.code}:\n${found.sameStatus.map((e) => `- ${formatError(e)}`).join("\n")}`);
+        return ok([...parts, source].join("\n\n"));
+      }
+      return fail(
+        `No documented error code "${found.code}" in ${lang}.${found.suggestions.length > 0 ? ` Did you mean: ${found.suggestions.join(", ")}?` : ""} ` +
+          "Codes of single features (player data, store, realtime, plugins) may be on their own pages: try search_docs with the code.",
+      );
+    },
+  );
+
   server.registerResource(
     "docs",
     new ResourceTemplate(`${RESOURCE_SCHEME}://{lang}/{+page}`, {
@@ -204,18 +330,17 @@ export function createServer(index: McpIndex): McpServer {
     "integrate_open_play",
     {
       title: "Integrate Open Play",
-      description: "Step-by-step plan to integrate a game with Open Play (web, unity or server), with links to the right docs.",
-      argsSchema: { platform: z.enum(["web", "unity", "server"]).optional().describe("Target platform; default web.") },
+      description:
+        "Step-by-step plan to integrate a game with Open Play for one scenario, with the panel checklist for a person and the doc pages to read. " +
+        "Scenarios: web-direct (web game on its own domain, SDK token mode), web-bff (static game + backend holding the server key), " +
+        "second-game (add a game to an existing studio), unity, server.",
+      argsSchema: {
+        scenario: z.enum(SCENARIOS).optional().describe(`Integration scenario: ${SCENARIOS.join(", ")}. Default: from platform, else web-direct.`),
+        platform: z.enum(Object.keys(PLATFORM_SCENARIO) as ["web", "unity", "server"]).optional().describe("Older argument: web (= web-direct), unity or server. Ignored when scenario is set."),
+      },
     },
-    ({ platform }) => {
-      const steps = INTEGRATION_STEPS[platform ?? "web"] ?? [];
-      const url = (id: string): string => `${SITE_ROOT}/en/${id}.html`;
-      const text = [
-        `Help me integrate my game with Open Play (${platform ?? "web"}). Use the open-play MCP tools (search_docs, read_doc, search_sdk, get_sdk_symbol) instead of guessing.`,
-        ...steps.map((s, i) => `${i + 1}. ${s}`),
-        `Start here: ${url("getting-started/quickstart")}`,
-        `Auth: ${url("auth/guest")} · Errors: ${url("reference/errors")}`,
-      ].join("\n");
+    ({ scenario, platform }) => {
+      const text = integrationPrompt(index, scenarioFor(scenario, platform));
       return { messages: [{ role: "user", content: { type: "text", text } }] };
     },
   );

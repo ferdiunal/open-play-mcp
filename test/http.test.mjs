@@ -39,8 +39,11 @@ test("a real MCP client over Streamable HTTP lists tools and calls search_docs",
     const client = new Client({ name: "http", version: "0.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${s.base}/mcp`)));
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-    assert.deepEqual(tools, ["get_sdk_symbol", "list_docs", "read_doc", "search_docs", "search_sdk"]);
+    assert.deepEqual(tools, ["get_endpoint", "get_error", "get_sdk_symbol", "index_info", "list_docs", "read_doc", "search_docs", "search_sdk"]);
     assert.match(text(await client.callTool({ name: "search_docs", arguments: { query: "player data" } })), /Player data/);
+    const info = text(await client.callTool({ name: "index_info", arguments: {} }));
+    assert.match(info, /Commit: fixture/);
+    assert.match(info, /Loaded from: live site — https:\/\/open-play\.b4klabs\.dev\/docs\/mcp\/index\.json/);
     await client.close();
   } finally {
     await s.close();
